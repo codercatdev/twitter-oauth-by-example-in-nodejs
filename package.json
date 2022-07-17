@@ -19,7 +19,10 @@
   },
   "homepage": "https://github.com/christian-fei/twitter-oauth-by-example-in-nodejs#readme",
   "dependencies": {
+    "dotenv": "^16.0.1",
     "got": "^10.5.5",
-    "oauth": "^0.9.15"
+    "http": "^0.0.1-security",
+    "oauth": "^0.9.15",
+    "url": "^0.11.0"
   }
 }

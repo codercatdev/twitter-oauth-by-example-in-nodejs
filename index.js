@@ -3,54 +3,96 @@
 const OAuth = require('oauth')
 const got = require('got')
 const { promisify } = require('util')
+require('dotenv').config()
+var http = require('http');
+var nodeUrl = require('url');
 
-if (require.main === module) {
-  getTwitterUserProfileWithOAuth1('twitterdev')
-    .then((profile) => console.log('oauth1 response', JSON.stringify(profile).substring(0, 100) + '...') && process.exit(0))
-    .catch(err => console.error(err) && process.exit(1))
+var oa = new OAuth.OAuth(
+  'https://api.twitter.com/oauth/request_token',
+  'https://api.twitter.com/oauth/access_token',
+  process.env.TWITTER_CONSUMER_KEY,
+  process.env.TWITTER_CONSUMER_SECRET,
+  '1.0A', null, 'HMAC-SHA1'
+);
 
-  getTwitterUserProfileWithOAuth2('twitterdev')
-    .then((profile) => console.log('oauth2 response', JSON.stringify(profile).substring(0, 100) + '...') && process.exit(0))
-    .catch(err => console.error(err) && process.exit(1))
-} else {
-  module.exports = {
-    getTwitterUserProfileWithOAuth1,
-    getTwitterUserProfileWithOAuth2
-  }
-}
+http.createServer(function (request, response) {
+  oa.getOAuthRequestToken(function (error, oAuthToken, oAuthTokenSecret, results) {
+    var urlObj = nodeUrl.parse(request.url, true);
+    console.log('urlObj', urlObj)
+    var authURL = 'https://twitter.com/' +
+      'oauth/authorize?oauth_token=' + oAuthToken;
+    var handlers = {
+      '/': function (request, response) {
+        /**
+         * Creating an anchor with authURL as href and sending as response
+         */
+        var body = '<a href="' + authURL + '"> Get Code </a>';
+        response.writeHead(200, {
+          'Content-Length': body.length,
+          'Content-Type': 'text/html'
+        });
+        response.end(body);
+      },
+      '/callback': function (request, response) {
+        /** Obtaining access_token */
+        var getOAuthRequestTokenCallback = function (error, oAuthAccessToken,
+          oAuthAccessTokenSecret, results) {
+          if (error) {
+            console.log(error);
+            response.end(JSON.stringify({
+              message: 'Error occured while getting access token',
+              error: error
+            }));
+            return;
+          }
+          // console.log(oAuthAccessToken)
+          // console.log(oAuthAccessTokenSecret)
+          // oa.get('https://api.twitter.com/1.1/account/verify_credentials.json',
+          //        oAuthAccessToken,
+          //        oAuthAccessTokenSecret,
+          //        function (error, twitterResponseData, result) {
+          //            if (error) {
+          //                console.log(error)
+          //                response.end(JSON.stringify(error));
+          //                return;
+          //            }
+          //            try {
+          //                console.log(JSON.parse(twitterResponseData));
+          //            } catch (parseError) {
+          //                console.log(parseError);
+          //            }
+          //            console.log(twitterResponseData);
+          //            response.end(twitterResponseData);
+          //        });
+          oa.get('https://api.twitter.com/1.1/statuses/show.json?id=1548692101831053316',
+            oAuthAccessToken,
+            oAuthAccessTokenSecret,
+            function (error, twitterResponseData, result) {
+              if (error) {
+                console.log(error)
+                response.end(JSON.stringify(error));
+                return;
+              }
+              try {
+                console.log(JSON.parse(twitterResponseData));
+              } catch (parseError) {
+                console.log(parseError);
+              }
+              console.log(twitterResponseData);
+              response.end(twitterResponseData);
+            });
+        };
 
-async function getTwitterUserProfileWithOAuth1 (username = 'twitterdev') {
-  var oauth = new OAuth.OAuth(
-    'https://api.twitter.com/oauth/request_token',
-    'https://api.twitter.com/oauth/access_token',
-    process.env.TWITTER_CONSUMER_KEY,
-    process.env.TWITTER_CONSUMER_SECRET,
-    '1.0A', null, 'HMAC-SHA1'
-  )
-  const get = promisify(oauth.get.bind(oauth))
+        oa.getOAuthAccessToken(urlObj.query.oauth_token, oAuthTokenSecret,
+          urlObj.query.oauth_verifier,
+          getOAuthRequestTokenCallback);
 
-  const body = await get(
-    `https://api.twitter.com/1.1/users/show.json?screen_name=${username}`,
-    process.env.TWITTER_ACCESS_KEY,
-    process.env.TWITTER_ACCESS_TOKEN_SECRET
-  )
-
-  return JSON.parse(body)
-}
-
-async function getTwitterUserProfileWithOAuth2 (username = 'twitterdev') {
-  var oauth2 = new OAuth.OAuth2(
-    process.env.TWITTER_CONSUMER_KEY,
-    process.env.TWITTER_CONSUMER_SECRET,
-    'https://api.twitter.com/', null, 'oauth2/token', null
-  )
-  const getOAuthAccessToken = promisify(oauth2.getOAuthAccessToken.bind(oauth2))
-  const accessToken = await getOAuthAccessToken('', { grant_type: 'client_credentials' })
-
-  return got(`https://api.twitter.com/1.1/users/show.json?screen_name=${username}`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`
-    }
+      },
+      '/favicon.ico': function (request, response) {
+        response.writeHead(200);
+      }
+    };
+    handlers[urlObj.pathname](request, response);
   })
-    .then((res) => JSON.parse(res.body))
-}
+
+}).listen(3000);
